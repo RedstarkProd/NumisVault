@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PREMIUM
+  PRO
+  BETA
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CoinStatus {
+  COLLECTION
+  FOR_SALE
+  FOR_TRADE
+  TO_EXPERTISE
+  SOLD
+}
+
+enum EstimationRequestStatus {
+  DRAFT
+  SENT
+  ANSWERED
+  CLOSED
+}
+
+enum ApiUsageType {
+  AI_ANALYSIS
+  DEALER_SEARCH
+  NUMISTA_SEARCH
+  PDF_EXPORT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  image         String?
+  plan          Plan      @default(FREE)
+  role          Role      @default(USER)
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  coins              Coin[]
+  analyses           CoinAnalysis[]
+  dealerSearches     DealerSearch[]
+  estimationRequests EstimationRequest[]
+  subscription       Subscription?
+  auditLogs          AuditLog[]
+  apiUsages          ApiUsage[]
+  sessions           Session[]
+  settings           UserSettings?
+
+  @@index([plan])
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model UserSettings {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  currency           String   @default("EUR")
+  language           String   @default("fr")
+  displayLimit       Int      @default(24)
+  emailNotifications Boolean  @default(false)
+  darkTheme          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Coin {
+  id                String     @id @default(cuid())
+  userId            String
+  title             String
+  country           String?
+  year              String?
+  denomination      String?
+  period            String?
+  metal             String?
+  weight            Float?
+  diameter          Float?
+  condition         String?
+  mint              String?
+  mintage           String?
+  purchasePrice     Float?
+  estimatedLow      Float?
+  estimatedMid      Float?
+  estimatedHigh     Float?
+  currency          String     @default("EUR")
+  status            CoinStatus @default(COLLECTION)
+  notes             String?    @db.Text
+  obverseImageUrl   String?
+  reverseImageUrl   String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses           CoinAnalysis[]
+  sources            CoinSource[]
+  dealerSearches     DealerSearch[]
+  estimationRequests EstimationRequest[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, country])
+  @@index([userId, metal])
+  @@index([createdAt])
+}
+
+model CoinAnalysis {
+  id                 String   @id @default(cuid())
+  coinId             String?
+  userId             String
+  probableName       String?
+  probableCountry    String?
+  probableYear       String?
+  probablePeriod     String?
+  probableMetal      String?
+  visibleText        String?
+  estimatedCondition String?
+  confidenceScore    Float?
+  aiSummary          String?  @db.Text
+  rawResult          Json?
+  createdAt          DateTime @default(now())
+
+  coin Coin? @relation(fields: [coinId], references: [id], onDelete: SetNull)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([coinId])
+}
+
+model CoinSource {
+  id              String   @id @default(cuid())
+  coinId          String
+  sourceName      String
+  sourceUrl       String?
+  externalId      String?
+  matchedData     Json?
+  confidenceScore Float?
+  createdAt       DateTime @default(now())
+
+  coin Coin @relation(fields: [coinId], references: [id], onDelete: Cascade)
+
+  @@index([coinId])
+  @@index([sourceName])
+}
+
+model Dealer {
+  id             String   @id @default(cuid())
+  name           String
+  address        String?
+  city           String?
+  postalCode     String?
+  country        String   @default("France")
+  phone          String?
+  website        String?
+  googleMapsUrl  String?
+  googlePlaceId  String?  @unique
+  rating         Float?
+  reviewCount    Int?
+  latitude       Float?
+  longitude      Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  estimationRequests EstimationRequest[]
+
+  @@index([city])
+  @@index([country])
+}
+
+model DealerSearch {
+  id           String   @id @default(cuid())
+  userId       String
+  coinId       String?
+  city         String
+  query        String
+  resultsCount Int      @default(0)
+  rawResults   Json?
+  createdAt    DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coin Coin? @relation(fields: [coinId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([coinId])
+  @@index([city, query])
+}
+
+model EstimationRequest {
+  id        String                  @id @default(cuid())
+  userId    String
+  coinId    String
+  dealerId  String?
+  message   String                  @db.Text
+  status    EstimationRequestStatus @default(DRAFT)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coin   Coin    @relation(fields: [coinId], references: [id], onDelete: Cascade)
+  dealer Dealer? @relation(fields: [dealerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([coinId])
+  @@index([dealerId])
+  @@index([status])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 Plan      @default(FREE)
+  status               String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model ApiUsage {
+  id        String       @id @default(cuid())
+  userId    String
+  type      ApiUsageType
+  count     Int          @default(1)
+  month     String
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, month])
+}
